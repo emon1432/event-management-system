@@ -1,5 +1,5 @@
 <?php
-require '../../config/db.php';
+require '../config/db.php';
 session_start();
 
 // Fetch all attendees with event details
