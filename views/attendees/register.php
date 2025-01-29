@@ -2,82 +2,11 @@
 require '../../config/db.php';
 session_start();
 
-if (!isset($_GET['event_id'])) {
-    header('Location: ../events/list.php');
-    exit();
-}
-
-$eventId = $_GET['event_id'];
-
-// Fetch event details
-$stmt = $conn->prepare("SELECT * FROM events WHERE id = :id");
-$stmt->execute(['id' => $eventId]);
-$event = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$event) {
-    header('Location: ../events/list.php');
-    exit();
-}
-
-// Check if the event is full
-$attendeeCount = $conn->prepare("SELECT COUNT(*) FROM attendees WHERE event_id = :event_id");
-$attendeeCount->execute(['event_id' => $eventId]);
-$registeredCount = $attendeeCount->fetchColumn();
-
-if ($registeredCount >= $event['max_capacity']) {
-    die("This event is full. No more registrations allowed.");
-}
-
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username']);
-    $email = trim($_POST['email']);
-    $password = password_hash($_POST['password'], PASSWORD_BCRYPT); // Securely hash the password
-
-    try {
-        $conn->beginTransaction(); // Start transaction to ensure atomic operations
-
-        // Check if user already exists in `users` table
-        $checkUserStmt = $conn->prepare("SELECT id FROM users WHERE email = :email");
-        $checkUserStmt->execute(['email' => $email]);
-        $user = $checkUserStmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$user) {
-            // Insert new user into `users` table
-            $insertUserStmt = $conn->prepare("INSERT INTO users (username, email, password, role) VALUES (:username, :email, :password, 'user')");
-            $insertUserStmt->execute([
-                'username' => $username,
-                'email' => $email,
-                'password' => $password
-            ]);
-            $userId = $conn->lastInsertId(); // Get new user's ID
-        } else {
-            $userId = $user['id']; // Use existing user ID
-        }
-
-        // Check if user already registered for this event
-        $checkStmt = $conn->prepare("SELECT COUNT(*) FROM attendees WHERE event_id = :event_id AND user_id = :user_id");
-        $checkStmt->execute(['event_id' => $eventId, 'user_id' => $userId]);
-
-        if ($checkStmt->fetchColumn() > 0) {
-            die("You have already registered for this event.");
-        }
-
-        // Register attendee in `attendees` table (No name/email, only user_id and event_id)
-        $stmt = $conn->prepare("INSERT INTO attendees (event_id, user_id) VALUES (:event_id, :user_id)");
-        $stmt->execute([
-            'event_id' => $eventId,
-            'user_id' => $userId
-        ]);
-
-        $conn->commit(); // Commit transaction
-
-        echo "<script>alert('Registration successful!'); window.location.href='../events/list.php';</script>";
-    } catch (Exception $e) {
-        $conn->rollBack(); // Rollback in case of error
-        die("Error: " . $e->getMessage());
-    }
-}
+// Fetch events for dropdown
+$query = "SELECT id, name, max_capacity FROM events";
+$stmt = $conn->prepare($query);
+$stmt->execute();
+$events = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -92,27 +21,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <body>
     <div class="container mt-5">
-        <h2>Register for <?php echo htmlspecialchars($event['name']); ?></h2>
-        <p><strong>Date:</strong> <?php echo htmlspecialchars($event['date']); ?></p>
-        <p><strong>Location:</strong> <?php echo htmlspecialchars($event['location']); ?></p>
+        <h2>Register for an Event</h2>
 
-        <form method="POST">
+        <form id="registerForm">
             <div class="mb-3">
                 <label for="username" class="form-label">Username</label>
-                <input type="text" id="username" name="username" class="form-control" required>
+                <input type="text" class="form-control" id="username" required>
             </div>
             <div class="mb-3">
                 <label for="email" class="form-label">Email</label>
-                <input type="email" id="email" name="email" class="form-control" required>
+                <input type="email" class="form-control" id="email" required>
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label">Password</label>
-                <input type="password" id="password" name="password" class="form-control" required>
+                <input type="password" class="form-control" id="password" required>
+            </div>
+            <div class="mb-3">
+                <label for="event" class="form-label">Select Event</label>
+                <select class="form-control" id="event" required>
+                    <option value="">-- Choose an Event --</option>
+                    <?php foreach ($events as $event): ?>
+                        <option value="<?= $event['id']; ?>"><?= htmlspecialchars($event['name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <button type="submit" class="btn btn-primary">Register</button>
-            <a href="../events/list.php" class="btn btn-secondary">Cancel</a>
         </form>
+
+        <div id="responseMessage" class="mt-3"></div>
     </div>
+
+    <script>
+        document.getElementById('registerForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            let username = document.getElementById('username').value;
+            let email = document.getElementById('email').value;
+            let password = document.getElementById('password').value;
+            let eventId = document.getElementById('event').value;
+
+            let formData = new FormData();
+            formData.append('username', username);
+            formData.append('email', email);
+            formData.append('password', password);
+            formData.append('event_id', eventId);
+
+            fetch('register_ajax.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    let messageBox = document.getElementById('responseMessage');
+                    if (data.success) {
+                        messageBox.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                    } else {
+                        messageBox.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        });
+    </script>
 </body>
 
 </html>
