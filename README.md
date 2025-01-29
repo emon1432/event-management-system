@@ -17,7 +17,7 @@ This is a **web-based event management system** that allows users to **create, m
 
 ### 1. Clone or Download the Repository
 ```bash
-git clone https://github.com/yourusername/event-management-system.git
+git clone https://github.com/emon1432/event-management-system.git
 ```
 
 ### 2. Database Setup
@@ -115,5 +115,3 @@ $pass = 'yourpassword';
 - **AJAX** (Event registration)
 - **CSV Export** (Event reports)
 
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
